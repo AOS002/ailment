@@ -34,6 +34,8 @@ class Expression(TaggedObject):
             return self.likes(atom)
 
     def __eq__(self, other):
+        if self is other:
+            return True
         return type(self) is type(other) and self.likes(other) and self.idx == other.idx
 
     def likes(self, atom):  # pylint:disable=unused-argument,no-self-use
@@ -51,10 +53,10 @@ class Expression(TaggedObject):
         return r, replaced
 
     def __add__(self, other):
-        return BinaryOp(None, "Add", [self, other], False)
+        return BinaryOp(None, "Add", [self, other], False, **self.tags)
 
     def __sub__(self, other):
-        return BinaryOp(None, "Sub", [self, other], False)
+        return BinaryOp(None, "Sub", [self, other], False, **self.tags)
 
 
 class Atom(Expression):
@@ -1083,6 +1085,9 @@ class MultiStatementExpression(Expression):
     def _hash_core(self):
         return stable_hash((MultiStatementExpression,) + tuple(self.stmts) + (self.expr,))
 
+    def likes(self, other):
+        return type(self) is type(other) and self.stmts == other.stmts and self.expr == other.expr
+
     def __repr__(self):
         return f"MultiStatementExpression({self.stmts}, {self.expr})"
 
@@ -1205,3 +1210,21 @@ class StackBaseOffset(BasePointerOffset):
 
     def copy(self) -> "StackBaseOffset":
         return StackBaseOffset(self.idx, self.bits, self.offset, **self.tags)
+
+
+def negate(expr: Expression) -> Expression:
+    if isinstance(expr, UnaryOp) and expr.op == "Not":
+        # unpack
+        return expr.operand
+    if isinstance(expr, BinaryOp) and expr.op in BinaryOp.COMPARISON_NEGATION:
+        return BinaryOp(
+            expr.idx,
+            BinaryOp.COMPARISON_NEGATION[expr.op],
+            expr.operands,
+            expr.signed,
+            bits=expr.bits,
+            floating_point=expr.floating_point,
+            rounding_mode=expr.rounding_mode,
+            **expr.tags,
+        )
+    return UnaryOp(None, "Not", expr, **expr.tags)
