@@ -616,7 +616,7 @@ class VEXIRSBConverter(Converter):
             if type(stmt) is pyvex.IRStmt.IMark:
                 if first_imark:
                     # update block address
-                    addr = stmt.addr + stmt.delta
+                    #addr = stmt.addr + stmt.delta
                     first_imark = False
                 manager.ins_addr = stmt.addr + stmt.delta
                 continue
