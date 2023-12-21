@@ -362,6 +362,7 @@ class VEXExprConverter(Converter):
 
 EXPRESSION_MAPPINGS = {
     pyvex.IRExpr.RdTmp: VEXExprConverter.RdTmp,
+    pyvex.expr.DataSensitiveRdTmp: VEXExprConverter.RdTmp,
     pyvex.IRExpr.Get: VEXExprConverter.Get,
     pyvex.IRExpr.Unop: VEXExprConverter.Unop,
     pyvex.IRExpr.Binop: VEXExprConverter.Binop,
