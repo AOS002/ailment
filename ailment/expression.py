@@ -227,7 +227,7 @@ class UnaryOp(Op):
 
     def likes(self, other):
         return (
-            type(other) is UnaryOp and self.op == other.op and self.bits == other.bits and self.operand == other.operand
+            type(other) is UnaryOp and self.op == other.op and self.bits == other.bits and self.operand.likes(other.operand)
         )
 
     __hash__ = TaggedObject.__hash__
@@ -236,7 +236,11 @@ class UnaryOp(Op):
         return stable_hash((self.op, self.operand, self.bits))
 
     def replace(self, old_expr, new_expr):
-        r, replaced_operand = self.operand.replace(old_expr, new_expr)
+        if self.operand == old_expr:
+            r = True
+            replaced_operand = new_expr
+        else:
+            r, replaced_operand = self.operand.replace(old_expr, new_expr)
 
         if r:
             return True, UnaryOp(self.idx, self.op, replaced_operand, **self.tags)
@@ -976,7 +980,8 @@ class DirtyExpression(Expression):
         return stable_hash((DirtyExpression, self.dirty_expr))
 
     def __repr__(self):
-        return "DirtyExpression (%s)" % type(self.dirty_expr)
+        return str(self)
+        #return "DirtyExpression (%s)" % type(self.dirty_expr)
 
     def __str__(self):
         return "[D] %s" % str(self.dirty_expr)
