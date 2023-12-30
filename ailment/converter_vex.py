@@ -3,6 +3,7 @@ import logging
 import pyvex
 from angr.utils.constants import DEFAULT_STATEMENT
 from angr.engines.vex.claripy.irop import vexop_to_simop
+from angr.errors import UnsupportedIROpError
 
 from .block import Block
 from .statement import Assignment, Store, Jump, Call, ConditionalJump, DirtyStatement, Return
@@ -44,7 +45,12 @@ class VEXExprConverter(Converter):
         """
         func = EXPRESSION_MAPPINGS.get(type(expr))
         if func is not None:
-            return func(expr, manager)
+            # When something goes wrong, return a DirtyExpression instead of crashing the program
+            try:
+                return func(expr, manager)
+            except UnsupportedIROpError:
+                log.warning("VEXExprConverter: Unsupported IROp %s.", expr.op)
+                return DirtyExpression(manager.next_atom(), expr, bits=expr.result_size(manager.tyenv))
 
         if isinstance(expr, pyvex.const.IRConst):
             return VEXExprConverter.const_n(expr, manager)
@@ -152,7 +158,18 @@ class VEXExprConverter(Converter):
                     shifted = BinaryOp(
                         manager.next_atom(),
                         "Shr",
-                        [inner, Const(manager.next_atom(), None, simop._to_size, 8)],
+                        [
+                            inner,
+                            Const(
+                                manager.next_atom(),
+                                None,
+                                simop._to_size,
+                                8,
+                                ins_addr=manager.ins_addr,
+                                vex_block_addr=manager.block_addr,
+                                vex_stmt_idx=manager.vex_stmt_idx,
+                            ),
+                        ],
                         False,
                         ins_addr=manager.ins_addr,
                         vex_block_addr=manager.block_addr,
@@ -180,6 +197,9 @@ class VEXExprConverter(Converter):
                     vex_stmt_idx=manager.vex_stmt_idx,
                 )
             raise NotImplementedError("Unsupported operation")
+        elif op_name == "Not" and expr.op != "Iop_Not1":
+            # NotN (N != 1) is equivalent to bitwise negation
+            op_name = "BitwiseNeg"
 
         return UnaryOp(
             manager.next_atom(),
@@ -647,7 +667,7 @@ class VEXIRSBConverter(Converter):
             manager.vex_stmt_idx = vex_stmt_idx
             try:
                 converted = VEXStmtConverter.convert(idx, stmt, manager)
-                if type(converted) is list:
+                if isinstance(converted, list):
                     # got multiple statements
                     statements.extend(converted)
                     idx += len(converted)
@@ -661,9 +681,7 @@ class VEXIRSBConverter(Converter):
                 pass
 
         manager.vex_stmt_idx = DEFAULT_STATEMENT
-        if irsb.jumpkind == "Ijk_Call":
-            # call
-
+        if irsb.jumpkind == "Ijk_Call" or irsb.jumpkind.startswith("Ijk_Sys"):
             # FIXME: Move ret_expr and fp_ret_expr creation into angr because we cannot reliably determine which
             #  expressions can be returned from the call without performing further analysis
             ret_reg_offset = manager.arch.ret_offset
@@ -686,10 +704,17 @@ class VEXIRSBConverter(Converter):
             else:
                 fp_ret_expr = None
 
+            if irsb.jumpkind == "Ijk_Call":
+                target = VEXExprConverter.convert(irsb.next, manager)
+            elif irsb.jumpkind.startswith("Ijk_Sys"):
+                target = DirtyExpression(manager.next_atom(), "syscall", manager.arch.bits)
+            else:
+                raise NotImplementedError("Unsupported jumpkind")
+
             statements.append(
                 Call(
                     manager.next_atom(),
-                    VEXExprConverter.convert(irsb.next, manager),
+                    target,
                     ret_expr=ret_expr,
                     fp_ret_expr=fp_ret_expr,
                     ins_addr=manager.ins_addr,
@@ -719,12 +744,13 @@ class VEXIRSBConverter(Converter):
             statements.append(
                 Return(
                     manager.next_atom(),
-                    VEXExprConverter.convert(irsb.next, manager),
                     [],
                     ins_addr=manager.ins_addr,
                     vex_block_addr=manager.block_addr,
                     vex_stmt_idx=DEFAULT_STATEMENT,
                 )
             )
+        else:
+            raise NotImplementedError("Unsupported jumpkind")
 
         return Block(addr, irsb.size, statements=statements)

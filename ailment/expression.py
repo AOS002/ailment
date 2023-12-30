@@ -494,6 +494,8 @@ class BinaryOp(Op):
         "CmpGTs": ">s",
         "CmpGEs": ">=s",
         "Concat": "CONCAT",
+        "Ror": "ROR",
+        "Rol": "ROL",
     }
 
     COMPARISON_NEGATION = {
@@ -549,9 +551,9 @@ class BinaryOp(Op):
         elif self.op == "Concat":
             self.bits = get_bits(operands[0]) + get_bits(operands[1])
         elif self.op == "Mull":
-            self.bits = get_bits(operands[0]) * 2 if type(operands[0]) is not int else get_bits(operands[1]) * 2
+            self.bits = get_bits(operands[0]) * 2 if not isinstance(operands[0], int) else get_bits(operands[1]) * 2
         else:
-            self.bits = get_bits(operands[0]) if type(operands[0]) is not int else get_bits(operands[1])
+            self.bits = get_bits(operands[0]) if not isinstance(operands[0], int) else get_bits(operands[1])
         self.signed = signed
         self.variable = variable
         self.variable_offset = variable_offset
@@ -1131,6 +1133,9 @@ class MultiStatementExpression(Expression):
                 self.idx, new_stmts, new_expr_ if new_expr_ is not None else self.expr, **self.tags
             )
         return False, self
+
+    def copy(self) -> "MultiStatementExpression":
+        return MultiStatementExpression(self.idx, self.stmts[::], self.expr, **self.tags)
 
 
 #
